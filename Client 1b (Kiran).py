@@ -2,6 +2,13 @@ from socket import AF_INET, socket, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY
 from threading import Thread
 from time import sleep
 
+# NOTE: rudder, pitch, bank reset if not being sent data,
+#       so need to send data constantly, so remove if statements
+
+# TODO: split basic controllers (bank, pitch, rudder, engine)
+#       from advanced detection (altitude, stall, speed)
+
+
 """Guide to telemetry and control (fold code to hide):
     Controller:
     0 - Bank (+ is right)
@@ -46,7 +53,11 @@ from time import sleep
                             South -  0  -1
                             West  - -1   0
                             On the Cliff scenery, the aircraft takes off towards the west, with the wind going east
-            ux, uy, uz - not sure what this does, probably the direction to the zenith of the aircraft
+            ux, uy, uz - see below
+                            uz - bank - 1 is no bank, 0.5 is 45 degree bank
+                            uy - bank - 0 is no bank, 1 is bank to the right, -1 is bank to the left (I think)
+                            ux - pitch? 0 is no pitch, -1 is down
+
             a - altitude of the aircraft in m
             vx, vy, vz - velocity of the aircraft (groundspeed I think) as a matrix
                             vz - + is up, - is down
@@ -56,7 +67,35 @@ from time import sleep
                             South - 0   -
                             West  - -   0
             wx, wy, wz - wind speed relative to the aircraft
+        
+    
+    Aircraft Response Systems:
+        Starting variables:
+            Pitch 0
+            Velocity 6
+            Roll 0 (not implemented)
+        Response to STALL (pitch > 0, vertical velocity < 0):
+            NONE
+        Response to too much speed (horizontal velocity > required):
+            Required pitch +0.1
+            Throttle -0.2
+        Response to too little speed (horizontal velocity < required):
+            Required pitch -0.1
+            Throttle +0.2
+        Response to roll:
+            Roll opposite 0.2
+        Response to high pitch (pitch > required):
+            Pitch down by required pitch -0.01
+        Response to low pitch (pitch < required):
+            Pitch up by required pitch +0.01
+
+
 """
+
+requiredPitch =             0   # pitch
+requiredHVelocity =         6   # speed
+requiredRoll =              0   # bank / roll
+requiredAltitude =        100   # altitude above sea level
 
 class Receiver: # so thread can be conveniently terminated
     def __init__(self, sock, BUFSIZ):
@@ -125,66 +164,110 @@ while True:
         print("Make sure you have enabled port controlling in PicaSim settings.")
         input("Press enter to retry connection.\n")
 
+
+pause()
+send("reset")
+
 receiver = Receiver(sock, BUFSIZ)
 receive_thread = Thread(target=receiver.receive)
 receive_thread.start()
 
-print("Running")
-send("reset")
+control()
+send("control 0 0")
+send("control 1 0")
+send("control 2 0")
+send("control 3 0")
 resume()
 
 # Custom code here
 send("requesttelemetry 0.1")
 #send("releasecontrol")
-control()
+
 tel = {}
-
-
-
-
-
-"""i = 0
-requiredPitch = 0.3
-requiredHVelocity = 8
+fixPitch = False
+fixThrottle = False
+control1 = 0
+control3 = 0
+i = 0
 while True:
     tel = receiver.getTelemetry()
     if tel.get("faceDir") == None:
         print("Main thread: No data received.")
         sleep(0.5)
         continue
-    print(float(tel.get("upDir")[2]))
+    alt = float(tel.get("pos")[2])
+    pitch = float(tel.get("faceDir")[2])
     hvelocity = (float(tel.get("vel")[0]) ** 2 + float(tel.get("vel")[1]) ** 2) ** 0.5
     vvelocity = float(tel.get("vel")[2])
-    if vvelocity < -1 and pitch > 0.1:
-        print("STALL")
-        requiredHVelocity += 0.1
-    elif vvelocity > 1:
-        requiredHVelocity -= 1
+    roll = float(tel.get("upDir")[1])
+
+    ####### STALL #######
+    """if vvelocity < 1 and pitch > 0:
+        if control3 > 0.9 and requiredPitch > -0.3:
+            fixThrottle = True
+            requiredPitch -= 0.1
+            print("SP")
+        if control3 <= 0.9:
+            fixThrottle = True
+            control3 += 0.3
+            print("ST")"""
+
+    ####### ALTITUDE #######
+    relativeAlt = alt - requiredAltitude
+    #print(relativeAlt)
+    if abs(relativeAlt) > 0:
+        fixPitch = True
+        #fixThrottle = True
+        if relativeAlt > 0 and pitch > -0.1:
+            requiredPitch -= 0.04
+            requiredHVelocity = 5
+            #control3 -= 0.1
+        elif relativeAlt < 0 and pitch < 0.1:
+            requiredPitch += 0.04
+            requiredHVelocity = 10
+            #control3 += 0.1
+    else:
+        fixPitch = False
+
+    ####### VELOCITY #######
     relativeHVelocity = hvelocity - requiredHVelocity
     if abs(relativeHVelocity) > 0:
         if relativeHVelocity > 0:
-            #print("too fast, decreasing speed %i" % i)
-            send("control 3 -%f" % 0.2)
-            requiredPitch += 0.01
+            if not fixThrottle:
+                control3 = 0.2
+            send("control 3 -%f" % control3)
+            """if not fixPitch:
+                requiredPitch += 0.01"""
             i += 1
         else:
-            #print("too slow, increasing speed %i" % i)
-            send("control 3 %f" % 0.2)
-            requiredPitch -= 0.01
+            if not fixThrottle:
+                control3 = 1# / (requiredHVelocity / relativeHVelocity)
+            send("control 3 %f" % control3)
+            """if not fixPitch:
+                requiredPitch -= 0.01"""
             i += 1
-    pitch = float(tel.get("faceDir")[2])
+    ####### PITCH #######
     relativePitch = pitch - requiredPitch
     if abs(relativePitch) > 0.01:
+        control1 = abs(relativePitch) - 0.01
         if relativePitch > 0:
-            send("control 1 %f" % (abs(relativePitch) - 0.01))
-            #print("Main thead: adjusting up %i" % i)
+            send("control 1 %f" % control1)
+            requiredHVelocity += 0.5
             i += 1
         else:
-            send("control 1 -%f" % (abs(relativePitch) - 0.01))
-            #print("Main thread: adjusting down %i" % i)
+            send("control 1 -%f" % control1)
+            requiredHVelocity -= 0.5
             i += 1
-    
-    sleep(0.1)"""
+    ####### ROLL ########
+    relativeRoll = roll - requiredRoll
+    if abs(relativeRoll) > 0:
+        if relativeRoll > 0:
+            send("control 0 -%f" % 0.5)#(abs(relativeRoll)))
+        else:
+            send("control 0 %f" % 0.5)#(abs(relativeRoll)))
+    fixPitch = False
+    fixThrottle = False
+    sleep(0.1)
 
 # Custom code ends here
 
