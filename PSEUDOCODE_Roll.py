@@ -1,3 +1,5 @@
+###THIS IS PSEUDOCODE FOR SIMPLE PROGRAMS TO CONTROL PHYSICAL GLIDERS###
+###WITH LITTLE EFFORT, THIS CAN BE TURNED INTO USABLE CODE###
 #Yaw
 Aileron = #output, control surface
 wanted_roll = # defined by AI, probably so that nose is pointing into airstream
