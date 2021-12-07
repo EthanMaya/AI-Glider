@@ -1,4 +1,6 @@
-#Roll
+###THIS IS PSEUDOCODE FOR SIMPLE PROGRAMS TO CONTROL PHYSICAL GLIDERS###
+###WITH LITTLE EFFORT, THIS CAN BE TURNED INTO USABLE CODE###
+#RateOfTurn
 #NOTE: the elovater controls the speed at which the glider turns, the ailerons do not
 #NOTE: might work to use roll instead of ailerons? but might not be worth it
 import Pitch
@@ -6,7 +8,7 @@ import Yaw
 import Roll
 #x is front of aircraft
 #wanted_pich = #0???
-aileron = #output, control surface
+aileron = #output, control surface, servo
 ROT = #(Rate Of Turn) around z axis input gyro
 WROT = #(Wanted Rate Of Turn) around z axis [R or L]
 
