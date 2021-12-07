@@ -1,3 +1,5 @@
+###THIS IS PSEUDOCODE FOR SIMPLE PROGRAMS TO CONTROL PHYSICAL GLIDERS###
+###WITH LITTLE EFFORT, THIS CAN BE TURNED INTO USABLE CODE###
 #Yaw
 Rudder = #output, control surface
 wanted_yaw = # defined by AI, probably so that nose is pointing into airstream
